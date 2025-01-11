@@ -16,6 +16,7 @@ fire = "^0.7.0"
 mypy = "^1.14.1"
 tomli = "^2.2.1"
 black = "^24.10.0"
+requests = "^2.32.3"
 
 
 [build-system]

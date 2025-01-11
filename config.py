@@ -10,7 +10,6 @@ else:
 
 DEFAULT_CONFIG_LOCATION = pathlib.Path("config.toml")
 
-
 class ApplictionConfig(pydantic.BaseModel):
     persistence: "Persistence"
 
