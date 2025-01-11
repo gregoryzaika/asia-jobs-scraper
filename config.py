@@ -8,7 +8,7 @@ else:
     import tomli as tomllib
 
 
-DEFAULT_CONFIG_LOCATION = pathlib.Path("application.toml")
+DEFAULT_CONFIG_LOCATION = pathlib.Path("config.toml")
 
 
 class ApplictionConfig(pydantic.BaseModel):
