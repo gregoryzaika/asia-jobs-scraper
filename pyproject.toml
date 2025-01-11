@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "asia-jobs-scraper"
+version = "0.1.0"
+description = ""
+authors = ["Grigori Zaika <h.zaika@student.uw.edu.pl>"]
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+selenium = "^4.27.1"
+bs4 = "^0.0.2"
+configparser = "^7.1.0"
+pydantic = "^2.10.5"
+fire = "^0.7.0"
+mypy = "^1.14.1"
+tomli = "^2.2.1"
+black = "^24.10.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.mypy.overrides]]
+module = "fire.*"
+ignore_missing_imports = true
