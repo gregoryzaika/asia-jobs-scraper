@@ -21,7 +21,7 @@ poetry run scrape links N_LINKS BATCH_SIZE
 The details will be written to the database in batches with size `BATCH_SIZE`.
 
 ```sh
-poetry run scrape details extract_job_details BATCH_SIZE
+poetry run scrape details BATCH_SIZE
 ```
 
 The links and the details will be stored in the pluggable SQLite database,
