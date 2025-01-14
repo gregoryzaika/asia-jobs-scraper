@@ -1,5 +1,9 @@
 # asia-jobs-scraper
 
+## Prerequisites
+
+* [Poetry](https://python-poetry.org/docs/)
+
 ## Usage
 
 ### Collect links to job offers
