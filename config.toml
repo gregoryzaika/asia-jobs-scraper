@@ -1,2 +1,2 @@
 [persistence.sqlite]
-db_file_location = "jobs_data.db"
+db_file_location = "jobs.db"

@@ -4,7 +4,10 @@ version = "0.1.0"
 description = ""
 authors = ["Grigori Zaika <h.zaika@student.uw.edu.pl>"]
 readme = "README.md"
+packages = [{include = "application.py", from = "."}]
 
+[tool.poetry.scripts]
+scrape = 'application:run'
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -17,6 +20,7 @@ mypy = "^1.14.1"
 tomli = "^2.2.1"
 black = "^24.10.0"
 requests = "^2.32.3"
+joblib = "^1.4.2"
 
 
 [build-system]
