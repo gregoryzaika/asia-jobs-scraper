@@ -4,16 +4,16 @@ from annotated_types import Ge
 
 from models import JobDetails, JobLink
 from scrapers.job_details import DetailsScrapingStrategy
-from scrapers.job_links import LinkScrapingStrategy
+from scrapers.job_links.strategy import LinkCrawlingStrategy
 
 
-class LinkScraper:
-    strategy: LinkScrapingStrategy
+class LinkCrawler:
+    strategy: LinkCrawlingStrategy
 
     def __init__(
         self,
         *,
-        strategy: LinkScrapingStrategy,
+        strategy: LinkCrawlingStrategy,
         batch_size: int = 10,
         n_links_to_collect: int = 100,
     ):
@@ -35,20 +35,21 @@ class LinkScraper:
         )
 
         batch_generator = self.strategy(
-            batch_size=batch_size, n_links_to_collect=n_links_to_collect
+            batch_size=batch_size,
+            n_links_to_collect=n_links_to_collect
         )
 
-        while True:
-            try:
-                batch = next(batch_generator)
-            except StopIteration as n_links_collected:
-                logging.info(
-                    f"Success! `{self.strategy.__name__}` collected {n_links_collected} links"
-                )
-                return int(n_links_collected.value)
-
+        n_links_collected = 0
+        for batch in batch_generator:
             logging.info(f"\tCollected {len(batch)} links")
             yield batch
+            n_links_collected += len(batch)
+
+        logging.info(
+            f"Success! `{self.strategy.__name__}` collected {n_links_collected} links"
+        )
+
+        return int(n_links_collected)
 
 
 class DetailScraper:

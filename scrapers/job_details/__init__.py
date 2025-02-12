@@ -24,7 +24,7 @@ class DetailsScrapingStrategy(typing.Protocol):
         Yields
         ------
         typing.List[str]
-            `batch_size`-sized batches of links
+            A list of job details
         """
 
     ...

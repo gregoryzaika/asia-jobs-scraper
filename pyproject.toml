@@ -10,17 +10,16 @@ packages = [{include = "application.py", from = "."}]
 scrape = 'application:run'
 
 [tool.poetry.dependencies]
-python = "^3.10"
-selenium = "^4.27.1"
+python = "^3.13"
+selenium = "^4.28.1"
 bs4 = "^0.0.2"
 configparser = "^7.1.0"
-pydantic = "^2.10.5"
+pydantic = "^2.10.6"
 fire = "^0.7.0"
-mypy = "^1.14.1"
+mypy = "^1.15.0"
 tomli = "^2.2.1"
-black = "^24.10.0"
+black = "^25.1.0"
 requests = "^2.32.3"
-joblib = "^1.4.2"
 
 
 [build-system]

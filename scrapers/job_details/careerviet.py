@@ -7,10 +7,9 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
 
-
 from models import JobDetails, JobLink, WebsiteIdentifier
 
-WEBSITE_IDENTIFIER = WebsiteIdentifier.SARAMIN
+WEBSITE_IDENTIFIER = WebsiteIdentifier.CAREERVIET
 
 
 def collect_saramin_job_details(
@@ -35,7 +34,7 @@ def collect_saramin_job_details(
     collected_details = []
 
     for link in links:
-        details: JobDetails | None = collect_job_details_from_single_link(driver, link)
+        details: JobDetails | None = collect_job_details(driver, link)
         if details is not None:
             collected_details.append(details)
         else:
@@ -51,7 +50,7 @@ def collect_saramin_job_details(
     return collected_details
 
 
-def collect_job_details_from_single_link(
+def collect_job_details(
     driver: webdriver.Remote, link: JobLink
 ) -> JobDetails | None:
     logging.info(f"Retrieving details for job {link.title} (id {link.id})")
@@ -61,7 +60,7 @@ def collect_job_details_from_single_link(
 
     try:
         title = driver.find_element(
-            By.XPATH, "/html/body/div[3]/div/div/div[3]/section[1]/div[1]/div[1]/div/h1"
+            By.XPATH, "/html/body/main/section[2]/div/div/div[1]/section/div[2]/div[1]/h1/font/font"
         ).text
     except NoSuchElementException:
         return None
@@ -69,7 +68,7 @@ def collect_job_details_from_single_link(
     try:
         company = driver.find_element(
             By.XPATH,
-            "/html/body/div[3]/div/div/div[3]/section[1]/div[1]/div[1]/div/div[1]/a[contains(@class, 'company')]",
+            "/html/body/main/section[2]/div/div/div[1]/section/div[2]/div[1]/a/font/font",
         ).get_attribute("title")
     except NoSuchElementException:
         company = "unspecified"
@@ -77,7 +76,7 @@ def collect_job_details_from_single_link(
     try:
         location = driver.find_element(
             By.XPATH,
-            "/html/body/div[3]/div/div/div[3]/section[1]/div[1]/div[5]/div/address/span[1]/span",
+            "/html/body/main/section[2]/div/div/div[2]/div/div[1]/section/div[1]/div/div[1]/div/div",
         ).text
     except NoSuchElementException:
         location = "unspecified"

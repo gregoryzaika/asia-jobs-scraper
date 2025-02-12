@@ -4,6 +4,7 @@ import dataclasses
 
 class WebsiteIdentifier(enum.Enum):
     SARAMIN = "saramin"
+    CAREERVIET = "careerviet"
 
 
 @dataclasses.dataclass

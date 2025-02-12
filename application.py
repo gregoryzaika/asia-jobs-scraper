@@ -9,16 +9,33 @@ import fire.docstrings
 
 from config import ApplictionConfig
 
-from models import JobLink, JobDetails, WebsiteIdentifier
+from models import JobLink, WebsiteIdentifier
 from persistence.sqlite import SqliteJobDetailsRepository, SqliteJobLinkRepository
-from scrapers import DetailScraper, LinkScraper
+from scrapers import DetailScraper, LinkCrawler
 from scrapers.job_details.saramin import collect_saramin_job_details
-from scrapers.job_links.saramin import collect_saramin_job_offer_links
+from scrapers.job_links.strategies.careerviet import CareervietSeleniumSequentialLinkCrawler
+from selenium import webdriver
+
+from scrapers.job_links.strategies.saramin import SaraminSeleniumSequentialLinkCrawler
 
 logging.basicConfig(level=logging.INFO)
 
+SELENIUM_CHROME_OPTIONS = webdriver.ChromeOptions()
+# SELENIUM_CHROME_OPTIONS.add_argument("--headless")
+
 LINK_SCRAPERS = {
-    WebsiteIdentifier.SARAMIN: LinkScraper(strategy=collect_saramin_job_offer_links)
+    # WebsiteIdentifier.SARAMIN: LinkCrawler(
+    #     strategy=SaraminSeleniumSequentialLinkCrawler(
+    #         lambda: webdriver.Chrome(options=SELENIUM_CHROME_OPTIONS),
+    #         entrypoint_url="https://www.saramin.co.kr/zf_user/jobs/list/domestic",
+    #     )
+    # ),
+    WebsiteIdentifier.CAREERVIET: LinkCrawler(
+        strategy=CareervietSeleniumSequentialLinkCrawler(
+            lambda: webdriver.Chrome(options=SELENIUM_CHROME_OPTIONS),
+            entrypoint_url="https://careerviet.vn/viec-lam/tat-ca-viec-lam-vi.html",
+        )
+    ),
 }
 
 DETAIL_SCRAPERS = {
@@ -61,7 +78,7 @@ class Application:
 
                 while True:
                     try:
-                        batch: typing.List[JobLink] = next(link_batches_generator)
+                        batch: typing.Iterable[JobLink] = next(link_batches_generator)
                         link_repository.save_batch(batch)
                     except StopIteration:
                         break
