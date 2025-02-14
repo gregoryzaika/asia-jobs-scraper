@@ -3,7 +3,7 @@ import logging
 from annotated_types import Ge
 
 from models import JobDetails, JobLink, WebsiteIdentifier
-from scrapers.strategies import DetailsScrapingStrategy
+from scrapers.strategy import DetailsScrapingStrategy
 
 
 class DetailScraper:
