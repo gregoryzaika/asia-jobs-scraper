@@ -5,16 +5,21 @@ import typing
 import sqlite3
 import pathlib
 
+import rich.text
+import rich.themes
+
 from persistence import JobDetailsRepository, JobLinkRepository
 from models import JobDetails, JobLink, WebsiteIdentifier
 
 
 class SqliteJobLinkRepository(JobLinkRepository):
+    LINKS_TABLE_NAME = "job_links"
+
     def __init__(self, db_file_location: pathlib.Path) -> None:
         self.connection = sqlite3.connect(db_file_location)
         self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_links (
+            f"""
+            CREATE TABLE IF NOT EXISTS {SqliteJobLinkRepository.LINKS_TABLE_NAME} (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 link TEXT NOT NULL,
@@ -39,7 +44,7 @@ class SqliteJobLinkRepository(JobLinkRepository):
         logging.info(f"Saving {len(job_link_batch)} job links")
         cursor = self.connection.cursor()
         result = cursor.executemany(
-            "INSERT OR IGNORE INTO job_links VALUES(?, ?, ?, ?)",
+            f"INSERT OR IGNORE INTO {SqliteJobLinkRepository.LINKS_TABLE_NAME} VALUES(?, ?, ?, ?)",
             [
                 (
                     job_link.id,
@@ -51,7 +56,10 @@ class SqliteJobLinkRepository(JobLinkRepository):
             ],
         )
         self.connection.commit()
-        logging.info(f"Saved {result.rowcount} new job links")
+
+        n_duplicates: int = len(job_link_batch) - result.rowcount
+
+        logging.info(f"Saved {result.rowcount} new job links ({n_duplicates} duplicates)")
 
         cursor.close()
 
@@ -63,7 +71,7 @@ class SqliteJobLinkRepository(JobLinkRepository):
     ) -> typing.List[JobLink]:
         cursor = self.connection.cursor()
         cursor.execute(
-            """SELECT * FROM job_links
+            f"""SELECT * FROM {SqliteJobLinkRepository.LINKS_TABLE_NAME}
             WHERE website_identifier = ?
             LIMIT ? OFFSET ?""",
             (website_identifier.value, batch_size, offset),
@@ -76,7 +84,7 @@ class SqliteJobLinkRepository(JobLinkRepository):
     def count(self, website_identifier: WebsiteIdentifier) -> int:
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT COUNT(*) FROM job_links WHERE website_identifier = ?",
+            f"SELECT COUNT(*) FROM {SqliteJobLinkRepository.LINKS_TABLE_NAME} WHERE website_identifier = ?",
             (website_identifier.value,),
         )
         count: int = cursor.fetchone()[0]
@@ -85,11 +93,13 @@ class SqliteJobLinkRepository(JobLinkRepository):
 
 
 class SqliteJobDetailsRepository(JobDetailsRepository):
+    DETAILS_TABLE_NAME = "job_details"
+
     def __init__(self, db_file_location: pathlib.Path) -> None:
         self.connection = sqlite3.connect(db_file_location)
         self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_details (
+            f"""
+            CREATE TABLE IF NOT EXISTS {SqliteJobDetailsRepository.DETAILS_TABLE_NAME} (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 company TEXT NOT NULL,
@@ -118,7 +128,7 @@ class SqliteJobDetailsRepository(JobDetailsRepository):
         logging.info(f"Saving {len(job_details_batch)} job links")
         cursor = self.connection.cursor()
         result = cursor.executemany(
-            """INSERT INTO job_details VALUES(?, ?, ?, ?, ?, ?, ?)
+            f"""INSERT INTO {SqliteJobDetailsRepository.DETAILS_TABLE_NAME} VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             company = excluded.company,
@@ -141,6 +151,9 @@ class SqliteJobDetailsRepository(JobDetailsRepository):
             ],
         )
         self.connection.commit()
-        logging.info(f"Saved {result.rowcount} new job links")
+
+        n_duplicates: int = len(job_details_batch) - result.rowcount
+
+        logging.info(f"Saved {result.rowcount} new job links ({n_duplicates} duplicates)")
 
         cursor.close()

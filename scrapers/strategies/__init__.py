@@ -1,14 +1,13 @@
-from annotated_types import Gt
-import typing
+from typing import List, Protocol, runtime_checkable
 
 from models import JobDetails, JobLink
 
 
-@typing.runtime_checkable
-class DetailsScrapingStrategy(typing.Protocol):
+@runtime_checkable
+class DetailsScrapingStrategy(Protocol):
     __name__: str
 
-    def __call__(self, *, links: typing.List[JobLink]) -> typing.List[JobDetails]:
+    def __call__(self, *, links: List[JobLink], **kwargs) -> List[JobDetails]:
         """Given a list of job links, collect the job details
 
         Parameters
@@ -17,11 +16,6 @@ class DetailsScrapingStrategy(typing.Protocol):
             All job links from which to collect job details
 
         Returns
-        -------
-        int
-            Total number of job details collected
-
-        Yields
         ------
         typing.List[str]
             A list of job details

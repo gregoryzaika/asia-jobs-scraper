@@ -2,58 +2,46 @@ import logging
 import typing
 from datetime import datetime, timezone
 
-from selenium import webdriver
+from selenium.webdriver import Remote
+from selenium.webdriver.common.options import ArgOptions
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
 
-
-from models import JobDetails, JobLink, WebsiteIdentifier
-
-WEBSITE_IDENTIFIER = WebsiteIdentifier.SARAMIN
+from models import JobDetails, JobLink
 
 
 def collect_saramin_job_details(
-    links: typing.List[JobLink],
+    links: typing.List[JobLink], driver_type: type[Remote], driver_options: ArgOptions
 ) -> typing.List[JobDetails]:
-    """See the `DetailsScrapingStrategy` protocol
+    """
+    Parameters
+    ---------
+    links : List[JobLink]
+        The job links saved earlier retreived from the repository
+    driver_type : type[Remote]
+        The type of the Selenium driver (Firefox, Chrome, etc.)
+    driver_options : BaseOptions
+        The options that are compatible with the driver
+
+    See the `DetailsScrapingStrategy` protocol
     definition to get the description of the arguments
     and the return type
 
     NOTE:
-    This can be parallelized with
-    ```python
-        from joblib import Parallel, delayed
-        results = Parallel(n_jobs=-1)(delayed(collect_job_details_from_single_link)(link) for link in links)
-    ```
-    but selenium thows an error when I'm opening a driver for the second time
+    This might be parallelized with `joblib.Parallel` and `joblib.delayed`, but
+    Selenium raises an error when I'm creating a driver for the second time and
+    then close the first instance.
     """
-    options = webdriver.FirefoxOptions()
-    options.add_argument("--headless")
-    driver = webdriver.Firefox(options=options)
-
-    collected_details = []
-
-    for link in links:
-        details: JobDetails | None = collect_job_details_from_single_link(driver, link)
-        if details is not None:
-            collected_details.append(details)
-        else:
-            logging.warning(
-                f"""Extracting job details from the link returned None.
-                Perhaps the job has expired or the page has an unusual
-                structure. (link: {link.link})
-                """
-            )
-
-    driver.close()
-
-    return collected_details
+    with driver_type(options=driver_options) as driver:
+        return [
+            details
+            for link in links
+            if (details := collect_details(driver, link)) is not None
+        ]
 
 
-def collect_job_details_from_single_link(
-    driver: webdriver.Remote, link: JobLink
-) -> JobDetails | None:
+def collect_details(driver: Remote, link: JobLink) -> JobDetails | None:
     logging.info(f"Retrieving details for job {link.title} (id {link.id})")
     driver.get(link.link)
 
@@ -63,7 +51,13 @@ def collect_job_details_from_single_link(
         title = driver.find_element(
             By.XPATH, "/html/body/div[3]/div/div/div[3]/section[1]/div[1]/div[1]/div/h1"
         ).text
-    except NoSuchElementException:
+    except NoSuchElementException as e:
+        logging.warning(
+            f"""The job details page was missing an element.
+                Perhaps the job has expired or the page has an unusual
+                structure. (link: {link}, error: {e})
+            """
+        )
         return None
 
     try:
@@ -97,14 +91,18 @@ def collect_job_details_from_single_link(
     except NoSuchElementException:
         salary_information = "unspecified"
 
-    # so far only this has been loading some post-specific content
-    # but the result is raw and has a repeating header and footer
-    # from the saramin website
-    # tried to go ahead with driver.switch_to.frame("iframe_content_0"),
-    # but no luck yet
-    user_iframe_body: WebElement = driver.find_element(
-        By.XPATH, "//*[@id='iframe_content_0']"
-    ).find_element(By.XPATH, "/html/body")
+    try:
+        # so far only this has been loading some post-specific content
+        # but the result is raw and has a repeating header and footer
+        # from the saramin website
+        # tried to go ahead with driver.switch_to.frame("iframe_content_0"),
+        # but no luck yet
+        user_iframe_body: WebElement = driver.find_element(
+            By.XPATH, "//*[@id='iframe_content_0']"
+        ).find_element(By.XPATH, "/html/body")
+        description = user_iframe_body.text
+    except NoSuchElementException as e:
+        description = ""
 
     return JobDetails(
         id=id,
@@ -112,6 +110,6 @@ def collect_job_details_from_single_link(
         company=str(company),
         location=location,
         salary_information=salary_information,
-        description=user_iframe_body.text,
+        description=description,
         access_date=datetime.now(timezone.utc).astimezone().isoformat(),
     )

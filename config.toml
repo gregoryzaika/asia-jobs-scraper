@@ -1,2 +1,4 @@
+log_level = "INFO"
+
 [persistence.sqlite]
 db_file_location = "jobs.db"

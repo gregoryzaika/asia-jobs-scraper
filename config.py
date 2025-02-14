@@ -1,4 +1,5 @@
 import pathlib
+from typing import Literal
 import pydantic
 import sys
 
@@ -13,6 +14,9 @@ DEFAULT_CONFIG_LOCATION = pathlib.Path("config.toml")
 
 class ApplictionConfig(pydantic.BaseModel):
     persistence: "Persistence"
+    log_level: (
+        Literal["INFO"] | Literal["WARNING"] | Literal["DEBUG"] | Literal["ERROR"]
+    )
 
     class Persistence(pydantic.BaseModel):
         sqlite: "Sqlite"

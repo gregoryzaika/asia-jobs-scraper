@@ -7,9 +7,7 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
 
-from models import JobDetails, JobLink, WebsiteIdentifier
-
-WEBSITE_IDENTIFIER = WebsiteIdentifier.CAREERVIET
+from models import JobDetails, JobLink
 
 
 def collect_saramin_job_details(
@@ -50,9 +48,7 @@ def collect_saramin_job_details(
     return collected_details
 
 
-def collect_job_details(
-    driver: webdriver.Remote, link: JobLink
-) -> JobDetails | None:
+def collect_job_details(driver: webdriver.Remote, link: JobLink) -> JobDetails | None:
     logging.info(f"Retrieving details for job {link.title} (id {link.id})")
     driver.get(link.link)
 
@@ -60,7 +56,8 @@ def collect_job_details(
 
     try:
         title = driver.find_element(
-            By.XPATH, "/html/body/main/section[2]/div/div/div[1]/section/div[2]/div[1]/h1/font/font"
+            By.XPATH,
+            "/html/body/main/section[2]/div/div/div[1]/section/div[2]/div[1]/h1/font/font",
         ).text
     except NoSuchElementException:
         return None

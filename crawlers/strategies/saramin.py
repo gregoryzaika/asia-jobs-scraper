@@ -5,27 +5,34 @@ import random
 import logging
 
 from selenium import webdriver
+from selenium.webdriver.support import ui
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, ElementNotInteractableException
 
+from crawlers.strategies.selenium_strategy import SequentialSeleniumLinkCrawlingStrategy
 from models import JobLink, WebsiteIdentifier
-from scrapers.job_links.strategies.selenium_strategy import SequentialSeleniumLinkCrawlingStrategy
 
-WEBSITE_IDENTIFIER = WebsiteIdentifier.SARAMIN
-
-# the website's search allows picking up to 15 regions
-SARAMIN_N_REGIONS_SEARCH_CAP = 15
 
 class SaraminSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStrategy):
     __name__ = "SaraminSeleniumSequentialLinkCrawler"
+    WEBSITE_IDENTIFIER = WebsiteIdentifier.SARAMIN
+    INITIAL_PAGE_URL = "https://www.saramin.co.kr/zf_user/jobs/list/domestic"
+    # the website's search allows picking up to 15 regions
+    SARAMIN_N_REGIONS_SEARCH_CAP = 15
 
-    def open_next_page(self, driver: webdriver.Remote, entrypoint_url: str) -> typing.Generator[None, None, None]:
-        yield self._open_first_page(driver, entrypoint_url) # open the first page - different from the rest
+    def iterate_pages(
+        self, driver: webdriver.Remote
+    ) -> typing.Generator[None, None, None]:
+        self._open_first_page(driver)
+        yield
+
         while True:
             page_box = driver.find_element(
-                By.XPATH, f"//*[@id='default_list_wrap']/div[contains(@class, 'PageBox')]"
+                By.XPATH,
+                f"//*[@id='default_list_wrap']/div[contains(@class, 'PageBox')]",
             )
             current_page_number = int(
                 page_box.find_element(
@@ -55,9 +62,8 @@ class SaraminSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStrateg
                     logging.info("No btnNext found")
                     return None
 
-
-    def _open_first_page(self, driver: webdriver.Remote, entrypoint_url: str) -> None:
-        driver.get(entrypoint_url)
+    def _open_first_page(self, driver: webdriver.Remote) -> None:
+        driver.get(SaraminSeleniumSequentialLinkCrawler.INITIAL_PAGE_URL)
 
         regions_pick_buttons: typing.List[WebElement] = driver.find_elements(
             By.XPATH,
@@ -67,15 +73,24 @@ class SaraminSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStrateg
         # click on 15 randomly chosen regions
         for region_pick_button in random.sample(
             regions_pick_buttons,
-            min(len(regions_pick_buttons), SARAMIN_N_REGIONS_SEARCH_CAP),
+            min(
+                len(regions_pick_buttons),
+                SaraminSeleniumSequentialLinkCrawler.SARAMIN_N_REGIONS_SEARCH_CAP,
+            ),
         ):
-            region_pick_button.click()
+            try:
+                region_pick_button.click()
+            except ElementNotInteractableException as e:
+                region_pick_button = ui.WebDriverWait(driver, 10).until(EC.element_to_be_clickable(region_pick_button))
+                region_pick_button.click()
 
         # click the search button
-        driver.find_element(By.XPATH, '//*[@id="search_btn"]').click()
+        search_btn = driver.find_element(By.XPATH, '//*[@id="search_btn"]')
 
+        logging.info(f"search_btn: {search_btn}")
+        search_btn.click()
 
-    def collect_links(
+    def iterate_links(
         self,
         driver: webdriver.Remote,
     ) -> typing.Generator[JobLink, None, None]:
@@ -99,21 +114,14 @@ class SaraminSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStrateg
 
         logging.info(f"Found {len(job_list_link_elements)} job links on the page")
 
-        yield from (
-            JobLink(
-                str(job_link_element.get_attribute("id")),
-                str(job_link_element.get_attribute("title")),
-                str(job_link_element.get_attribute("href")),
-                WEBSITE_IDENTIFIER,
-            )
-            for job_link_element in job_list_link_elements
-            if self._all_job_link_attrs_present(job_link_element)
-        )
-
-    @staticmethod
-    def _all_job_link_attrs_present(job_link_element: WebElement) -> bool:
-        for attr in ["id", "title", "href"]:
-            if job_link_element.get_attribute(attr) is None:
-                logging.info(f"Job link element missing {attr}. Skipping.")
-                return False
-        return True
+        for job_link_element in job_list_link_elements:
+            id_ = job_link_element.get_attribute("id")
+            title = job_link_element.get_attribute("title")
+            href = job_link_element.get_attribute("href")
+            if None not in (id_, title, href):
+                yield JobLink(
+                    str(id_),
+                    str(title),
+                    str(href),
+                    SaraminSeleniumSequentialLinkCrawler.WEBSITE_IDENTIFIER,
+                )

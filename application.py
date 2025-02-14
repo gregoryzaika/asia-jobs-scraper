@@ -1,46 +1,36 @@
 import logging.config
-import typing
-from annotated_types import Ge
+import logging
+from typing import Generator, List
+from itertools import count, takewhile
 
 import fire
-import logging
-
 import fire.docstrings
+from selenium.webdriver import Remote, Chrome, ChromeOptions, Firefox, FirefoxOptions
+from selenium.webdriver.common.options import ArgOptions
+from rich.logging import RichHandler
 
 from config import ApplictionConfig
 
-from models import JobLink, WebsiteIdentifier
+from crawlers.crawler import LinkCrawler
+from crawlers.strategies.careerviet import CareervietSeleniumSequentialLinkCrawler
+from crawlers.strategies.saramin import SaraminSeleniumSequentialLinkCrawler
+from models import JobDetails, JobLink
 from persistence.sqlite import SqliteJobDetailsRepository, SqliteJobLinkRepository
-from scrapers import DetailScraper, LinkCrawler
-from scrapers.job_details.saramin import collect_saramin_job_details
-from scrapers.job_links.strategies.careerviet import CareervietSeleniumSequentialLinkCrawler
-from selenium import webdriver
+from scrapers.scraper import DetailScraper
+from scrapers.strategies.saramin import collect_saramin_job_details
 
-from scrapers.job_links.strategies.saramin import SaraminSeleniumSequentialLinkCrawler
 
-logging.basicConfig(level=logging.INFO)
+DRIVER: type[Remote] = Firefox
+OPTS: ArgOptions = FirefoxOptions()
+OPTS.add_argument("--headless")
 
-SELENIUM_CHROME_OPTIONS = webdriver.ChromeOptions()
-# SELENIUM_CHROME_OPTIONS.add_argument("--headless")
+CRAWLERS = [
+    LinkCrawler(strategy=SaraminSeleniumSequentialLinkCrawler(DRIVER, OPTS)),
+    LinkCrawler(strategy=CareervietSeleniumSequentialLinkCrawler(DRIVER, OPTS)),
+]
 
-LINK_SCRAPERS = {
-    # WebsiteIdentifier.SARAMIN: LinkCrawler(
-    #     strategy=SaraminSeleniumSequentialLinkCrawler(
-    #         lambda: webdriver.Chrome(options=SELENIUM_CHROME_OPTIONS),
-    #         entrypoint_url="https://www.saramin.co.kr/zf_user/jobs/list/domestic",
-    #     )
-    # ),
-    WebsiteIdentifier.CAREERVIET: LinkCrawler(
-        strategy=CareervietSeleniumSequentialLinkCrawler(
-            lambda: webdriver.Chrome(options=SELENIUM_CHROME_OPTIONS),
-            entrypoint_url="https://careerviet.vn/viec-lam/tat-ca-viec-lam-vi.html",
-        )
-    ),
-}
+SCRAPERS = [DetailScraper(strategy=collect_saramin_job_details)]
 
-DETAIL_SCRAPERS = {
-    WebsiteIdentifier.SARAMIN: DetailScraper(strategy=collect_saramin_job_details)
-}
 
 class Application:
     """The CLI tool that runs the scraping scripts
@@ -57,6 +47,12 @@ class Application:
 
     def __init__(self) -> None:
         self.config = ApplictionConfig.load()
+        logging.basicConfig(
+            level=self.config.log_level,
+            format="%(name)s - %(levelname)s - %(message)s",
+            datefmt="[%X]",
+            handlers=[RichHandler(rich_tracebacks=True)],
+        )
         logging.info(f"Initialized the application with config {self.config}")
 
     def links(self, n_links: int, batch_size: int) -> None:
@@ -66,22 +62,21 @@ class Application:
 
         Parameters
         ----------
+        n_links : int
+            Total number of job links to go through
+        batch_size : int
+            How many links to collect in one step
 
         """
         with SqliteJobLinkRepository(
             self.config.persistence.sqlite.db_file_location
         ) as link_repository:
-            for _, link_scraper in LINK_SCRAPERS.items():
-                link_batches_generator = link_scraper.scrape(
-                    batch_size=batch_size, n_links_to_collect=n_links
-                )
-
-                while True:
-                    try:
-                        batch: typing.Iterable[JobLink] = next(link_batches_generator)
-                        link_repository.save_batch(batch)
-                    except StopIteration:
-                        break
+            for crawler in CRAWLERS:
+                logging.info(f"")
+                for batch in crawler.crawl(
+                    batch_size=batch_size, n_links_to_read=n_links
+                ):
+                    link_repository.save_batch(batch)
 
     def details(self, batch_size: int) -> None:
         """Given the previously collected links, open each of them,
@@ -89,6 +84,8 @@ class Application:
 
         Parameters
         ----------
+        batch_size : int
+            How many saved links to retrieve and scrape the details for at once
 
         """
         with SqliteJobLinkRepository(
@@ -96,17 +93,16 @@ class Application:
         ) as link_repository, SqliteJobDetailsRepository(
             self.config.persistence.sqlite.db_file_location
         ) as details_repository:
-            for website_identifier, detail_scraper in DETAIL_SCRAPERS.items():
-                logging.info(
-                    f"Extracting job details for website `{website_identifier}`"
+            for scraper in SCRAPERS:
+                logging.info(f"Starting scraper {scraper.strategy.__name__}")
+                website_id = scraper.WEBSITE_IDENTIFIER
+                link_batches: Generator[List[JobLink], None, None] = (
+                    link_repository.get_batch(website_id, batch_size, offset)
+                    for offset in count(0, batch_size)
                 )
-                n_links_stored = link_repository.count(website_identifier)
-                for batch_offset in range(0, n_links_stored, batch_size):
-                    links = link_repository.get_batch(
-                        website_identifier, batch_size, batch_offset
-                    )
-                    detail_batch = detail_scraper.scrape(links=links)
-                    logging.info(f"Extracted job details from {len(links)} links")
+                for batch in takewhile(lambda b: len(b) > 0, link_batches):
+                    detail_batch: List[JobDetails] = scraper.scrape(links=batch)
+                    logging.info(f"Extracted {len(batch)} details for {website_id}")
                     details_repository.save_batch(detail_batch)
 
 
