@@ -1,15 +1,13 @@
-from types import TracebackType
-from annotated_types import Ge
 import logging
-import typing
-import sqlite3
 import pathlib
+import sqlite3
+import typing
+from types import TracebackType
 
-import rich.text
-import rich.themes
+from annotated_types import Ge
 
-from persistence import JobDetailsRepository, JobLinkRepository
 from models import JobDetails, JobLink, WebsiteIdentifier
+from persistence import JobDetailsRepository, JobLinkRepository
 
 
 class SqliteJobLinkRepository(JobLinkRepository):
@@ -17,16 +15,14 @@ class SqliteJobLinkRepository(JobLinkRepository):
 
     def __init__(self, db_file_location: pathlib.Path) -> None:
         self.connection = sqlite3.connect(db_file_location)
-        self.connection.execute(
-            f"""
+        self.connection.execute(f"""
             CREATE TABLE IF NOT EXISTS {SqliteJobLinkRepository.LINKS_TABLE_NAME} (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 link TEXT NOT NULL,
                 website_identifier TEXT NOT NULL
             )
-            """
-        )
+            """)
 
     def __enter__(self) -> "SqliteJobLinkRepository":
         return self
@@ -40,11 +36,12 @@ class SqliteJobLinkRepository(JobLinkRepository):
         self.connection.close()
         return False
 
-    def save_batch(self, job_link_batch: typing.List[JobLink]) -> None:
+    def save_batch(self, job_link_batch: typing.Tuple[JobLink, ...]) -> None:
         logging.info(f"Saving {len(job_link_batch)} job links")
         cursor = self.connection.cursor()
         result = cursor.executemany(
-            f"INSERT OR IGNORE INTO {SqliteJobLinkRepository.LINKS_TABLE_NAME} VALUES(?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO"
+            f" {SqliteJobLinkRepository.LINKS_TABLE_NAME} VALUES(?, ?, ?, ?)",
             [
                 (
                     job_link.id,
@@ -59,7 +56,9 @@ class SqliteJobLinkRepository(JobLinkRepository):
 
         n_duplicates: int = len(job_link_batch) - result.rowcount
 
-        logging.info(f"Saved {result.rowcount} new job links ({n_duplicates} duplicates)")
+        logging.info(
+            f"Saved {result.rowcount} new job links ({n_duplicates} duplicates)"
+        )
 
         cursor.close()
 
@@ -68,7 +67,7 @@ class SqliteJobLinkRepository(JobLinkRepository):
         website_identifier: WebsiteIdentifier,
         batch_size: typing.Annotated[int, Ge(0)],
         offset: typing.Annotated[int, Ge(0)],
-    ) -> typing.List[JobLink]:
+    ) -> typing.Tuple[JobLink, ...]:
         cursor = self.connection.cursor()
         cursor.execute(
             f"""SELECT * FROM {SqliteJobLinkRepository.LINKS_TABLE_NAME}
@@ -79,12 +78,13 @@ class SqliteJobLinkRepository(JobLinkRepository):
         rows = cursor.fetchall()
         cursor.close()
 
-        return [JobLink(*row) for row in rows]
+        return tuple(JobLink(*row) for row in rows)
 
     def count(self, website_identifier: WebsiteIdentifier) -> int:
         cursor = self.connection.cursor()
         cursor.execute(
-            f"SELECT COUNT(*) FROM {SqliteJobLinkRepository.LINKS_TABLE_NAME} WHERE website_identifier = ?",
+            f"SELECT COUNT(*) FROM {SqliteJobLinkRepository.LINKS_TABLE_NAME} WHERE"
+            " website_identifier = ?",
             (website_identifier.value,),
         )
         count: int = cursor.fetchone()[0]
@@ -97,20 +97,18 @@ class SqliteJobDetailsRepository(JobDetailsRepository):
 
     def __init__(self, db_file_location: pathlib.Path) -> None:
         self.connection = sqlite3.connect(db_file_location)
-        self.connection.execute(
-            f"""
+        self.connection.execute(f"""
             CREATE TABLE IF NOT EXISTS {SqliteJobDetailsRepository.DETAILS_TABLE_NAME} (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 company TEXT NOT NULL,
-                location TEXT NOT NULL,
+                location TEXT,
                 salary_information TEXT,
                 description TEXT NOT NULL,
                 access_date TEXT NOT NULL,
                 FOREIGN KEY (id) REFERENCES job_links(id)
             )
-            """
-        )
+            """)
 
     def __enter__(self) -> "SqliteJobDetailsRepository":
         return self
@@ -124,11 +122,12 @@ class SqliteJobDetailsRepository(JobDetailsRepository):
         self.connection.close()
         return False
 
-    def save_batch(self, job_details_batch: typing.List[JobDetails]) -> None:
+    def save_batch(self, job_details_batch: typing.Tuple[JobDetails, ...]) -> None:
         logging.info(f"Saving {len(job_details_batch)} job links")
         cursor = self.connection.cursor()
+        table = SqliteJobDetailsRepository.DETAILS_TABLE_NAME
         result = cursor.executemany(
-            f"""INSERT INTO {SqliteJobDetailsRepository.DETAILS_TABLE_NAME} VALUES(?, ?, ?, ?, ?, ?, ?)
+            f"""INSERT INTO {table} VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             company = excluded.company,
@@ -154,6 +153,8 @@ class SqliteJobDetailsRepository(JobDetailsRepository):
 
         n_duplicates: int = len(job_details_batch) - result.rowcount
 
-        logging.info(f"Saved {result.rowcount} new job links ({n_duplicates} duplicates)")
+        logging.info(
+            f"Saved {result.rowcount} new job links ({n_duplicates} duplicates)"
+        )
 
         cursor.close()

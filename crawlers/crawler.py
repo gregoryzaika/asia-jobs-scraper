@@ -1,9 +1,10 @@
-import typing
 import logging
+import typing
+
 from annotated_types import Ge
 
-from models import JobLink
 from crawlers.strategy import LinkCrawlingStrategy
+from models import JobLink
 
 
 class LinkCrawler:
@@ -25,12 +26,15 @@ class LinkCrawler:
         *,
         batch_size: typing.Annotated[int, Ge(0)],
         n_links_to_read: typing.Annotated[int, Ge(0)],
-    ) -> typing.Generator[typing.List[JobLink], None, int]:
+    ) -> typing.Generator[typing.Tuple[JobLink, ...], None, int]:
         logging.info(
-            f"\n--- Scraping links ---\n"
-            f"\n\tScraping {n_links_to_read} links\n"
-            f"\tin batches with batch size {batch_size}\n"
-            f"\tusing strategy `{self.strategy.__name__}`\n"
+            "\n--- Scraping links ---\n"
+            "\n\tScraping %i links\n"
+            "\tin batches with batch size %i\n"
+            "\tusing strategy `%s`\n",
+            n_links_to_read,
+            batch_size,
+            self.strategy.__name__,
         )
 
         batch_generator = self.strategy(
@@ -43,7 +47,7 @@ class LinkCrawler:
             n_links_collected += len(batch)
 
         logging.info(
-            f"Success! `{self.strategy.__name__}` collected {n_links_collected} links"
+            "Success! %s collected %i links", self.strategy.__name__, n_links_collected
         )
 
         return int(n_links_collected)

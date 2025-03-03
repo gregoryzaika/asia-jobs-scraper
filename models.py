@@ -1,5 +1,7 @@
-import enum
 import dataclasses
+import enum
+from datetime import datetime, timezone
+from typing import Optional
 
 
 class WebsiteIdentifier(enum.Enum):
@@ -20,7 +22,9 @@ class JobDetails:
     id: str
     title: str
     company: str
-    location: str
-    salary_information: str
+    location: Optional[str]
+    salary_information: Optional[str]
     description: str
-    access_date: str
+    access_date: str = dataclasses.field(
+        default_factory=lambda: datetime.now(timezone.utc).astimezone().isoformat()
+    )

@@ -1,24 +1,22 @@
-import logging.config
 import logging
-from typing import Generator, List
+import logging.config
 from itertools import count, takewhile
+from typing import Generator, Tuple
 
 import fire
 import fire.docstrings
-from selenium.webdriver import Remote, Chrome, ChromeOptions, Firefox, FirefoxOptions
-from selenium.webdriver.common.options import ArgOptions
 from rich.logging import RichHandler
+from selenium.webdriver import Firefox, FirefoxOptions, Remote
+from selenium.webdriver.common.options import ArgOptions
 
 from config import ApplictionConfig
-
 from crawlers.crawler import LinkCrawler
 from crawlers.strategies.careerviet import CareervietSeleniumSequentialLinkCrawler
 from crawlers.strategies.saramin import SaraminSeleniumSequentialLinkCrawler
 from models import JobDetails, JobLink
 from persistence.sqlite import SqliteJobDetailsRepository, SqliteJobLinkRepository
 from scrapers.scraper import DetailScraper
-from scrapers.strategies.saramin import collect_saramin_job_details
-
+from scrapers.strategies.careerviet import careerviet_selenium_sequential
 
 DRIVER: type[Remote] = Firefox
 OPTS: ArgOptions = FirefoxOptions()
@@ -29,7 +27,10 @@ CRAWLERS = [
     LinkCrawler(strategy=CareervietSeleniumSequentialLinkCrawler(DRIVER, OPTS)),
 ]
 
-SCRAPERS = [DetailScraper(strategy=collect_saramin_job_details)]
+SCRAPERS = [
+    # DetailScraper(strategy=init_saramin_selenium_scraper(DRIVER, OPTS)),
+    DetailScraper(strategy=careerviet_selenium_sequential),
+]
 
 
 class Application:
@@ -53,7 +54,7 @@ class Application:
             datefmt="[%X]",
             handlers=[RichHandler(rich_tracebacks=True)],
         )
-        logging.info(f"Initialized the application with config {self.config}")
+        logging.info("Initialized the application with config %s", self.config)
 
     def links(self, n_links: int, batch_size: int) -> None:
         """Provided the website and the search strategy, search the
@@ -72,7 +73,6 @@ class Application:
             self.config.persistence.sqlite.db_file_location
         ) as link_repository:
             for crawler in CRAWLERS:
-                logging.info(f"")
                 for batch in crawler.crawl(
                     batch_size=batch_size, n_links_to_read=n_links
                 ):
@@ -94,15 +94,25 @@ class Application:
             self.config.persistence.sqlite.db_file_location
         ) as details_repository:
             for scraper in SCRAPERS:
-                logging.info(f"Starting scraper {scraper.strategy.__name__}")
-                website_id = scraper.WEBSITE_IDENTIFIER
-                link_batches: Generator[List[JobLink], None, None] = (
-                    link_repository.get_batch(website_id, batch_size, offset)
+                logging.info(
+                    "Starting scraper %s for website %s",
+                    scraper.strategy.__name__,
+                    scraper.strategy.website.name,
+                )
+                link_batches: Generator[Tuple[JobLink, ...], None, None] = (
+                    link_repository.get_batch(
+                        scraper.strategy.website, batch_size, offset
+                    )
                     for offset in count(0, batch_size)
                 )
                 for batch in takewhile(lambda b: len(b) > 0, link_batches):
-                    detail_batch: List[JobDetails] = scraper.scrape(links=batch)
-                    logging.info(f"Extracted {len(batch)} details for {website_id}")
+
+                    detail_batch: Tuple[JobDetails, ...] = scraper.scrape(links=batch)
+                    logging.info(
+                        "Extracted %i details for %s",
+                        len(batch),
+                        scraper.strategy.website.name,
+                    )
                     details_repository.save_batch(detail_batch)
 
 

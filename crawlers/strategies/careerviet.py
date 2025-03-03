@@ -1,11 +1,10 @@
-import typing
-
 import logging
+import typing
 
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
 
 from crawlers.strategies.selenium_strategy import SequentialSeleniumLinkCrawlingStrategy
 from models import JobLink, WebsiteIdentifier
@@ -13,14 +12,14 @@ from models import JobLink, WebsiteIdentifier
 
 class CareervietSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStrategy):
     __name__ = "CareervietSeleniumSequentialLinkCrawler"
-    WEBSITE_IDENTIFIER = WebsiteIdentifier.CAREERVIET
-    INITIAL_PAGE_URL = "https://careerviet.vn/viec-lam/tat-ca-viec-lam-vi.html"
+    website = WebsiteIdentifier.CAREERVIET
+    initial_page_url = "https://careerviet.vn/viec-lam/tat-ca-viec-lam-vi.html"
 
     def iterate_pages(
         self, driver: webdriver.Remote
     ) -> typing.Generator[None, None, None]:
         # open the first page
-        driver.get(CareervietSeleniumSequentialLinkCrawler.INITIAL_PAGE_URL)
+        driver.get(CareervietSeleniumSequentialLinkCrawler.initial_page_url)
         yield
 
         def get_next_page_button(driver: webdriver.Remote) -> WebElement | None:
@@ -58,7 +57,9 @@ class CareervietSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStra
         """
         job_list_link_elements: typing.List[WebElement] = driver.find_elements(
             By.XPATH,
-            '//*[@id="jobs-side-list-content"]//div[contains(@id, "job-item")]//div[contains(@class, "title")]//a[contains(@class, "job_link")]',
+            '//*[@id="jobs-side-list-content"]//div[contains(@id,'
+            ' "job-item")]//div[contains(@class, "title")]//a[contains(@class,'
+            ' "job_link")]',
         )
 
         for job_link_element in job_list_link_elements:
@@ -70,5 +71,5 @@ class CareervietSeleniumSequentialLinkCrawler(SequentialSeleniumLinkCrawlingStra
                     str(data_id),
                     str(title),
                     str(href),
-                    CareervietSeleniumSequentialLinkCrawler.WEBSITE_IDENTIFIER,
+                    CareervietSeleniumSequentialLinkCrawler.website,
                 )

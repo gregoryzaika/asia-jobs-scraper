@@ -1,21 +1,22 @@
-from annotated_types import Gt
+import logging
+from itertools import batched, islice
 from typing import (
+    Annotated,
+    Callable,
+    ClassVar,
     Generator,
     List,
-    Tuple,
     Protocol,
+    Tuple,
     runtime_checkable,
-    Annotated,
-    Callable
 )
-from itertools import batched, islice, product
-import logging
 
+from annotated_types import Gt
 from selenium import webdriver
 from selenium.webdriver.common.options import BaseOptions
 
-from models import JobLink
 from crawlers.strategy import LinkCrawlingStrategy
+from models import JobLink
 
 
 @runtime_checkable
@@ -31,7 +32,7 @@ class SequentialSeleniumLinkCrawlingStrategy(LinkCrawlingStrategy, Protocol):
     at that number + 1.
     """
 
-    __name__: str
+    __name__: ClassVar[str]
     init_driver: Callable
 
     def __init__(
@@ -46,9 +47,9 @@ class SequentialSeleniumLinkCrawlingStrategy(LinkCrawlingStrategy, Protocol):
         *,
         batch_size: Annotated[int, Gt(0)],
         n_links_to_read: Annotated[int, Gt(0)],
-    ) -> Generator[Tuple[JobLink], None, None]:
+    ) -> Generator[Tuple[JobLink, ...], None, None]:
         with self.init_driver() as driver:
-            links: Generator[JobLink, None, None] = islice(
+            links: islice[JobLink] = islice(
                 (
                     link
                     for _ in self.iterate_pages(driver)
@@ -58,13 +59,16 @@ class SequentialSeleniumLinkCrawlingStrategy(LinkCrawlingStrategy, Protocol):
             )
 
             for batch in batched(links, batch_size):
-                logging.info(f"Collected {len(batch)} job links")
+                logging.info("Collected %i job links", len(batch))
                 yield batch
 
-    def iterate_pages(
-        self, driver: webdriver.Remote
-    ) -> Generator[None, None, None]: ...
+    def iterate_pages(self, driver: webdriver.Remote) -> Generator[None, None, None]:
+        """
+        Makes the driver open a new page with job links after the previous page has
+        been drained
+        """
 
-    def iterate_links(
-        self, driver: webdriver.Remote
-    ) -> Generator[JobLink, None, None]: ...
+    def iterate_links(self, driver: webdriver.Remote) -> Generator[JobLink, None, None]:
+        """
+        On a given page, goes through the gob links and returns them sequentially
+        """

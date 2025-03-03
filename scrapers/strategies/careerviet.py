@@ -1,113 +1,204 @@
+import enum
 import logging
-import typing
-from datetime import datetime, timezone
+import logging.config
+import re
+from typing import Tuple, cast
 
-from selenium import webdriver
-from selenium.webdriver.remote.webelement import WebElement
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+import requests
+from bs4 import BeautifulSoup
+from lxml import etree, html
+from returns.result import Failure, Result, Success, safe
 
-from models import JobDetails, JobLink
-
-
-def collect_saramin_job_details(
-    links: typing.List[JobLink],
-) -> typing.List[JobDetails]:
-    """See the `DetailsScrapingStrategy` protocol
-    definition to get the description of the arguments
-    and the return type
-
-    NOTE:
-    This can be parallelized with
-    ```python
-        from joblib import Parallel, delayed
-        results = Parallel(n_jobs=-1)(delayed(collect_job_details_from_single_link)(link) for link in links)
-    ```
-    but selenium thows an error when I'm opening a driver for the second time
-    """
-    options = webdriver.FirefoxOptions()
-    options.add_argument("--headless")
-    driver = webdriver.Firefox(options=options)
-
-    collected_details = []
-
-    for link in links:
-        details: JobDetails | None = collect_job_details(driver, link)
-        if details is not None:
-            collected_details.append(details)
-        else:
-            logging.warning(
-                f"""Extracting job details from the link returned None.
-                Perhaps the job has expired or the page has an unusual
-                structure. (link: {link.link})
-                """
-            )
-
-    driver.close()
-
-    return collected_details
+from models import JobDetails, JobLink, WebsiteIdentifier
+from scrapers import PageExpired
+from scrapers.strategy import detail_scraping_strategy
 
 
-def collect_job_details(driver: webdriver.Remote, link: JobLink) -> JobDetails | None:
-    logging.info(f"Retrieving details for job {link.title} (id {link.id})")
-    driver.get(link.link)
+@detail_scraping_strategy(WebsiteIdentifier.CAREERVIET)
+def careerviet_selenium_sequential(
+    links: Tuple[JobLink, ...],
+) -> Tuple[JobDetails, ...]:
+    def handle_errors(e: Exception, url: str) -> bool:
+        if isinstance(e, PageExpired):
+            logging.warning(f"{e}; skipping link {url}")
+            return True
+        elif isinstance(e, requests.ReadTimeout):
+            logging.warning(f"{e}; skipping link {url}")
+            return True
+        raise e
 
-    id = link.id
-
-    try:
-        title = driver.find_element(
-            By.XPATH,
-            "/html/body/main/section[2]/div/div/div[1]/section/div[2]/div[1]/h1/font/font",
-        ).text
-    except NoSuchElementException:
-        return None
-
-    try:
-        company = driver.find_element(
-            By.XPATH,
-            "/html/body/main/section[2]/div/div/div[1]/section/div[2]/div[1]/a/font/font",
-        ).get_attribute("title")
-    except NoSuchElementException:
-        company = "unspecified"
-
-    try:
-        location = driver.find_element(
-            By.XPATH,
-            "/html/body/main/section[2]/div/div/div[2]/div/div[1]/section/div[1]/div/div[1]/div/div",
-        ).text
-    except NoSuchElementException:
-        location = "unspecified"
-
-    try:
-        location_div: WebElement = driver.find_element(By.XPATH, "//*[@id='map_0']")
-        alt_location = f"""{location_div.get_attribute("data-address")}; lat {location_div.get_attribute("data-latitude")}; long {location_div.get_attribute("data-longitude")}"""
-        location = f"{location} ({alt_location})"
-    except NoSuchElementException:
-        alt_location = ""
-
-    try:
-        salary_information = driver.find_element(
-            By.XPATH,
-            "/html/body/div[3]/div/div/div[3]/section[1]/div[1]/div[2]/div/div[1]/dl[1]/dd",
-        ).text
-    except NoSuchElementException:
-        salary_information = "unspecified"
-
-    # so far only this has been loading some post-specific content
-    # but the result is raw and has a repeating header and footer
-    # from the saramin website
-    # tried to go ahead with driver.switch_to.frame("iframe_content_0"),
-    # but no luck yet
-    user_iframe_body: WebElement = driver.find_element(
-        By.XPATH, "//*[@id='iframe_content_0']"
-    ).find_element(By.XPATH, "/html/body")
-
-    return JobDetails(
-        id=id,
-        title=title,
-        company=str(company),
-        location=location,
-        salary_information=salary_information,
-        description=user_iframe_body.text,
-        access_date=datetime.now(timezone.utc).astimezone().isoformat(),
+    return tuple(
+        cast(JobDetails, res.unwrap())
+        for link in links
+        if not (res := collect_details(link)).alt(lambda e: handle_errors(e, link.link))
     )
+
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like"
+        " Gecko) Chrome/58.0.3029.110 Safari/537.3"
+    )
+}
+
+
+class XPATHS(enum.Enum):
+    TITLE = "/html/head/title"
+    LOCATION = (
+        "/html/body/main/section[2]/div/div/div[2]/div/div[1]/section/div[1]/div/"
+        "div[1]/div/div/p/a"
+    )
+    ALT_LOCATION = (
+        "/html/body/main/section[2]/div/div/div[2]/div/div[1]/section/div[5]/div"
+    )
+    ADDRESS = (
+        "/html/body/main/section[2]/div/div/div[2]/div/div[1]/section/div[5]/div/span"
+    )
+    SALARY = (
+        "/html/body/main/section[2]/div/div/div[2]/div/"
+        "div[1]/section/div[1]/div/div[3]/div/ul/li[1]/p"
+    )
+    ALT_SALARY = (
+        "/html/body/main/section[3]/div/div/div/div[1]/"
+        "div[2]/div/div/table/tbody/tr[2]/td[2]/p/*"
+    )
+    DESCRIPTION = "/html/body/main/section[2]/div/div/div[2]/div/div[1]/section/div[3]"
+    ALT_DESCRIPTION = "/html/body/main/section[3]/div/div/div/div[1]/div[4]/div[1]"
+    PAGE_EXPIRED_BANNER = "//div[contains(@class, 'no-search')"
+
+
+@safe
+def collect_details(link: JobLink) -> Result[JobDetails, PageExpired]:
+    logging.info(
+        "Retrieving details for job %s (id: %s, link: %s)",
+        link.title,
+        link.id,
+        link.link,
+    )
+
+    response = requests.get(link.link, headers=HEADERS, timeout=20)
+    response.raise_for_status()  # Raises an error if the request failed
+
+    if response.url == "https://careerviet.vn/error.html":
+        return Failure(PageExpired(link.link))
+
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    dom: etree._Element = etree.HTML(str(soup))
+
+    match element_exists(dom, XPATHS.PAGE_EXPIRED_BANNER):
+        case Success(True):
+            return Failure(PageExpired(link.link))
+        case Success(False):
+            pass
+        case Failure(e):
+            return Failure(e)
+
+    job_title, company = (
+        get_element_text(dom, XPATHS.TITLE.value)
+        .map(lambda title: (title.removeprefix("Tuyển dụng ").split(" tại ")))
+        .map(
+            lambda split_title: (
+                split_title[0],
+                re.split(
+                    r" 20[0-9][0-9]", split_title[1].removesuffix(" - CareerViet.vn")
+                )[0],
+            )
+        )
+        .unwrap()
+    )
+
+    location = (
+        get_element_text(dom, XPATHS.LOCATION)
+        .map(lambda location: f"{location};")
+        .value_or("")
+        + get_element_text(dom, XPATHS.ALT_LOCATION)
+        .map(lambda alt_location: f" {alt_location};")
+        .value_or("")
+        + get_element_text(dom, XPATHS.ADDRESS)
+        .map(lambda address: f" {address};")
+        .value_or("")
+    )
+
+    salary_information = (
+        get_element_text(dom, XPATHS.SALARY)
+        .lash(lambda _: get_element_text(dom, XPATHS.ALT_SALARY))
+        .value_or(None)
+    )
+    description = (
+        get_element_as_text(dom, XPATHS.DESCRIPTION)
+        .lash(lambda _: get_element_as_text(dom, XPATHS.ALT_DESCRIPTION))
+        .unwrap()
+    )
+
+    return Success(
+        JobDetails(
+            id=link.id,
+            title=job_title,
+            company=company,
+            location=location,
+            salary_information=salary_information,
+            description=description,
+        )
+    )
+
+
+@safe
+def get_element_text(
+    dom: etree._Element, xpath: str | XPATHS, display_name: str | None = None
+) -> str:
+    if isinstance(xpath, XPATHS):
+        display_name = xpath.name
+        xpath = xpath.value
+
+    if (
+        isinstance(els := dom.xpath(xpath), list)
+        and len(els) > 0
+        and isinstance(el := els[0], etree._Element)
+    ):
+        if (text := el.text) is None:
+            text = str(html.HtmlElement(el[0]).text_content())
+        else:
+            text = text
+    else:
+        raise ValueError(
+            f"Unexpected value: {str(els)}: Expected list[lxml.etree._Element] for"
+            f" {display_name}"
+        )
+
+    return text
+
+
+@safe
+def get_element_as_text(
+    dom: etree._Element, xpath: str | XPATHS, display_name: str | None = None
+) -> str:
+    if isinstance(xpath, XPATHS):
+        display_name = xpath.name
+        xpath = xpath.value
+
+    if isinstance(els := dom.xpath(xpath), list) and isinstance(
+        el := els[0], etree._Element
+    ):
+        text: str = etree.tounicode(el)
+    else:
+        raise ValueError(
+            f"Unexpected value: {str(els)}: Expected list[lxml.etree._Element] for"
+            f" {display_name}"
+        )
+
+    return text
+
+
+@safe
+def element_exists(dom, xpath: XPATHS) -> bool:
+    if isinstance(els := dom.xpath(xpath.value), list):
+        if len(els) > 0:
+            return True
+        else:
+            return False
+    else:
+        raise ValueError(
+            f"Unexpected value: {str(els)}: Expected list[lxml.etree._Element] for"
+            f" {xpath.name}"
+        )

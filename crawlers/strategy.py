@@ -1,20 +1,29 @@
+from typing import (
+    Annotated,
+    Callable,
+    ClassVar,
+    Generator,
+    Protocol,
+    Tuple,
+    runtime_checkable,
+)
+
 from annotated_types import Gt
-from typing import Generator, Tuple, Tuple, Protocol, runtime_checkable, Annotated
 
 from models import JobLink, WebsiteIdentifier
 
 
 @runtime_checkable
 class LinkCrawlingStrategy(Protocol):
-    __name__: str
-    WEBSITE_IDENTIFIER: WebsiteIdentifier
+    __name__: ClassVar[str]
+    website: ClassVar[WebsiteIdentifier]
 
     def __call__(
         self,
         *,
         batch_size: Annotated[int, Gt(0)],
         n_links_to_read: Annotated[int, Gt(0)],
-    ) -> Generator[Tuple[JobLink], None, None]:
+    ) -> Generator[Tuple[JobLink, ...], None, None]:
         """Every link crawler function has to be a Callable with
         these arguments and return type:
         ```python
@@ -40,4 +49,28 @@ class LinkCrawlingStrategy(Protocol):
             `batch_size`-sized batches of links
         """
 
-    ...
+
+def link_crawling_strategy(website_: WebsiteIdentifier):
+    """A decorator for function-like strategies"""
+
+    def wrapper(
+        f: Callable[
+            [Annotated[int, Gt(0)], Annotated[int, Gt(0)]],
+            Generator[Tuple[JobLink, ...], None, None],
+        ],
+    ):
+        class _(LinkCrawlingStrategy):
+            __name__: ClassVar[str] = f.__name__
+            website: ClassVar[WebsiteIdentifier] = website_
+
+            def __call__(
+                self,
+                *,
+                batch_size: Annotated[int, Gt(0)],
+                n_links_to_read: Annotated[int, Gt(0)],
+            ) -> Generator[Tuple[JobLink, ...], None, None]:
+                return f(batch_size, n_links_to_read)
+
+        return _
+
+    return wrapper

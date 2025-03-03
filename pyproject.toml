@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "application.py", from = "."}]
 
 [tool.poetry.scripts]
-scrape = 'application:run'
+collect = 'application:run'
 
 [tool.poetry.dependencies]
 python = "^3.13"
@@ -21,7 +21,19 @@ tomli = "^2.2.1"
 black = "^25.1.0"
 requests = "^2.32.3"
 rich = "^13.9.4"
+lxml = "^5.3.1"
+flake8-pyproject = "^1.2.3"
+returns = "^0.24.0"
 
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+flake8 = "^7.1.2"
+
+[tool.black]
+line-length = 88
+
+[tool.flake8]
+max-line-length = 88
 
 [build-system]
 requires = ["poetry-core"]

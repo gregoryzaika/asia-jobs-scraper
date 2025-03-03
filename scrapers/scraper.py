@@ -1,22 +1,21 @@
-import typing
 import logging
-from annotated_types import Ge
+import typing
 
-from models import JobDetails, JobLink, WebsiteIdentifier
-from scrapers.strategy import DetailsScrapingStrategy
+from models import JobDetails, JobLink
+from scrapers.strategy import DetailScrapingStrategy
 
 
 class DetailScraper:
-    WEBSITE_IDENTIFIER: WebsiteIdentifier
-    strategy: DetailsScrapingStrategy
+    strategy: DetailScrapingStrategy
 
-    def __init__(self, *, strategy: DetailsScrapingStrategy):
+    def __init__(self, *, strategy: DetailScrapingStrategy):
         self.strategy = strategy
 
-    def scrape(self, *, links: typing.List[JobLink]) -> typing.List[JobDetails]:
+    def scrape(
+        self, *, links: typing.Tuple[JobLink, ...]
+    ) -> typing.Tuple[JobDetails, ...]:
         logging.info(
-            f"\n--- Scraping details ---\n"
+            "\n--- Scraping details ---\n"
             f"\n\tScraping job details for {len(links)} links"
         )
-
         return self.strategy(links=links)
